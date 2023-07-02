@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Скачать лог{% endblock %}
+
+{% block content %}
+{% include 'header.html' %}
+<div class="container">
+    <div class="col text-center">
+        <h1>Лог-файл</h1>
+    </div>
+    <a href="{{ url_for('download_log') }}" class="btn btn-primary mb-3">Сохранить в PDF</a>
+    <pre>{{ log_content }}</pre>
+</div>
+{% include 'footer.html' %}
+{% endblock %}

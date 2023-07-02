@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+
+{% block title %}Список ссылок{% endblock %}
+
+{% block content %}
+{% include 'header.html' %}
+<div class="container mb-5">
+    <div class="col text-center">
+        <h1>Список ссылок</h1>
+    </div>
+    <div class="row">
+        <div class="col-md-3">
+            <h3>Фильтры</h3>
+            <form action="/resources_list" method="GET">
+                <div class="mb-3">
+                    <label for="domain" class="form-label">Поиск по доменному имени:</label>
+                    <input type="text" id="domain" name="domain" class="form-control"
+                        value="{{ request.args.get('domain', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label for="domain_zone" class="form-label">Доменная зона:</label>
+                    <select id="domain_zone" name="domain_zone" class="form-select">
+                        <option value="">Все</option>
+                        {% for zone in zone_list %}
+                        <option value="{{ zone[0] }}" {% if request.args.get('domain_zone')==zone[0] %}selected{%
+                            endif %}>{{ zone[0] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="is_available" class="form-label">Фильтр по доступности:</label>
+                    <select id="is_available" name="is_available" class="form-select">
+                        <option value="">Все</option>
+                        <option value="1" {% if request.args.get('is_available')=='1' %}selected{% endif %}>Доступно
+                        </option>
+                        <option value="0" {% if request.args.get('is_available')=='0' %}selected{% endif %}>
+                            Недоступно</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Применить фильтры</button>
+                <a href="/resources_list" class="btn btn-secondary mt-3">Сбросить фильтры</a>
+            </form>
+        </div>
+        <div class="col-md-9">
+            {% if resources %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for resource in resources %}
+                    <tr>
+                        <td><a href="/resources/{{ resource.uuid }}">{{ resource.url }}</a></td>
+                        <td>{{ resource.status_code }}</td>
+                        <td>
+                            <form action="/resources/{{ resource.uuid }}" method="POST">
+                                <input type="hidden" name="_method" value="DELETE">
+                                <button type="submit" class="btn btn-danger">Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div>
+                {% if prev_page %}
+                <a href="/resources_list?page={{ prev_page }}{% if request.args %}&{{ request.args|urlencode }}{% endif %}"
+                    class="btn btn-primary">Предыдущая</a>
+                {% endif %}
+                <span class="mx-2">Страница {{ current_page }} из {{ total_pages }}</span>
+                {% if next_page %}
+                <a href="/resources_list?page={{ next_page }}{% if request.args %}&{{ request.args|urlencode }}{% endif %}"
+                    class="btn btn-primary">Следующая</a>
+                {% endif %}
+            </div>
+            {% else %}
+            <h3>По заданным условиям ссылок не найдено.</h3>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% include 'footer.html' %}
+{% endblock %}

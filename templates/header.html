@@ -1,0 +1,52 @@
+<header class="p-3 text-bg-dark sticky-top">
+    <div class="container">
+        <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+            <a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-white text-decoration-none">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Логотип" width="100" height="40">
+            </a>
+
+            <ul class="nav col-12 col-lg-auto me-lg-auto mb-2 justify-content-center mb-md-0">
+                <li>
+                    <a href="/"
+                        class="nav-link px-2 {% if request.path == '/' or request.path == '/resources_list' %}text-secondary{% else %}text-white{% endif %}">
+                        Все ресурсы
+                    </a>
+                </li>
+                <li>
+                    <a href="/add_resource"
+                        class="nav-link px-2 {% if request.path == '/add_resource' %}text-secondary{% else %}text-white{% endif %}">
+                        Добавить ресурс
+                    </a>
+                </li>
+                <li>
+                    <a href="/news_feed"
+                        class="nav-link px-2 {% if request.path == '/news_feed' %}text-secondary{% else %}text-white{% endif %}">
+                        Лента новостей
+                    </a>
+                </li>
+                <li>
+                    <a href="/log"
+                        class="nav-link px-2 {% if request.path == '/log' %}text-secondary{% else %}text-white{% endif %}">
+                        Скачать лог
+                    </a>
+                </li>
+                <li>
+                    <a href="/about"
+                        class="nav-link px-2 {% if request.path == '/about' %}text-secondary{% else %}text-white{% endif %}">
+                        О проекте
+                    </a>
+                </li>
+            </ul>
+
+            <form class="col-12 col-lg-auto mb-3 mb-lg-0 me-lg-3" role="search">
+                <input type="search" class="form-control form-control-dark text-bg-dark" placeholder="Найти..."
+                    aria-label="Search">
+            </form>
+
+            <div class="text-end">
+                <button type="button" class="btn btn-outline-light me-2">Войти</button>
+                <button type="button" class="btn btn-warning">Регистрация</button>
+            </div>
+        </div>
+    </div>
+</header>

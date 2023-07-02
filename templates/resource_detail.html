@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+
+{% block title %}Детали веб-ресурса{% endblock %}
+
+{% block content %}
+{% include 'header.html' %}
+<div class="container mb-5">
+    <div class="col text-center">
+        <h1>Детали веб-ресурса</h1>
+    </div>
+    <table class="table">
+        <tbody>
+            <tr>
+                <th scope="row">URL</th>
+                <td>{{ resource.url }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Протокол</th>
+                <td>{{ resource.protocol }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Домен</th>
+                <td>{{ resource.domain }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Доменная зона</th>
+                <td>{{ resource.domain_zone }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Путь</th>
+                <td>{{ resource.path }}</td>
+            </tr>
+            {% if resource.params %}
+            <tr>
+                <th scope="row">Параметры запроса</th>
+                <td>
+                    {% for key, value in resource.params.items() %}
+                    {{ key }}: {{ value }}<br>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endif %}
+
+            <tr>
+                <th scope="row">Статус код</th>
+                <td>{{ resource.status_code }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Доступен</th>
+                <td>{{ resource.is_available }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Дата мониторинга</th>
+                <td>{{ resource.last_checked }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    {% if image_data %}
+    <h2>Скриншот</h2>
+    <img src="data:image/png;base64, {{ image_data }}" alt="Screenshot" class="img-fluid">
+    <div>
+        <form action="/resource/{{ resource.uuid }}/upload_screenshot" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <input type="file" name="screenshot" id="screenshot-input" class="form-control-file mt-3"
+                    accept="image/*">
+                <div>
+                    <button type="submit" id="update-screenshot-btn" class="btn btn-primary mt-3" disabled>Изменить
+                        скриншот</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% else %}
+    <div>
+        <form action="/resource/{{ resource.uuid }}/upload_screenshot" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <input type="file" name="screenshot" id="screenshot-input" class="form-control-file mt-3"
+                    accept="image/*">
+                <div>
+                    <button type="submit" id="add-screenshot-btn" class="btn btn-primary mt-3" disabled>Добавить
+                        скриншот</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="mt-5">
+        <h2>Лента новостей</h2>
+        {% if actions %}
+        <ul class="list-group">
+            {% for action in actions %}
+            <li class="list-group-item">{{ action }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <h4>Здесь будут выводиться события, связанные с данным веб-ресурсом.</h4>
+        {% endif %}
+    </div>
+
+    <div>
+        <a href="/resources_list" class="btn btn-primary mt-3">К списку веб-ресурсов</a>
+    </div>
+</div>
+{% include 'footer.html' %}
+
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script>
+    const screenshotInput = document.getElementById('screenshot-input');
+    const updateScreenshotBtn = document.getElementById('update-screenshot-btn');
+    const addScreenshotBtn = document.getElementById('add-screenshot-btn');
+
+    screenshotInput.addEventListener('change', () => {
+        const fileSelected = screenshotInput.files.length > 0;
+        updateScreenshotBtn.disabled = !fileSelected;
+    });
+    screenshotInput.addEventListener('change', () => {
+        const fileSelected = screenshotInput.files.length > 0;
+        addScreenshotBtn.disabled = !fileSelected;
+    });
+
+</script>
+{% endblock %}

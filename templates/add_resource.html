@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}Добавление веб-ресурса{% endblock %}
+
+{% block content %}
+{% include 'header.html' %}
+<div class="container mb-5">
+    <div class="col text-center">
+        <h1>Добавление веб-ресурса</h1>
+    </div>
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="url-tab" data-toggle="tab" href="#url-tab-content" role="tab"
+                aria-controls="url-tab-content" aria-selected="true">URL</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="file-tab" data-toggle="tab" href="#file-tab-content" role="tab"
+                aria-controls="file-tab-content" aria-selected="false">Файл</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="myTabContent">
+        <div class="tab-pane fade show active" id="url-tab-content" role="tabpanel" aria-labelledby="url-tab">
+            <form action="/add_resource_via_form" method="POST" id="url-form">
+                <div class="form-group mt-3">
+                    <label for="url">Введите ссылку на веб-ресурс:</label>
+                    <input type="text" class="form-control" id="url" name="single_url">
+                </div>
+                <button type="submit" class="btn btn-primary mt-3" id="url-submit-btn">Отправить URL</button>
+            </form>
+        </div>
+
+        <div class="tab-pane fade" id="file-tab-content" role="tabpanel" aria-labelledby="file-tab">
+            <form action="/add_resource_via_form" method="POST" enctype="multipart/form-data" id="file-form">
+                <div class="form-group mt-3">
+                    <div>
+                        <label class="mb-3" for="file">Загрузите zip-архив, содержащий csv-файл со ссылками на веб-ресурсы:</label>
+                    </div>
+                    <input type="file" class="form-control-file" id="file" name="file" accept=".zip">
+                </div>
+                <button type="submit" class="btn btn-primary mt-3" id="file-submit-btn">Загрузить ZIP-архив</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% include 'footer.html' %}
+
+<!-- Подключение скриптов Bootstrap и пользовательского скрипта -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Функция для проверки полей и активации/деактивации кнопок
+    function checkFields() {
+        var urlInput = document.getElementById('url');
+        var fileInput = document.getElementById('file');
+        var urlSubmitBtn = document.getElementById('url-submit-btn');
+        var fileSubmitBtn = document.getElementById('file-submit-btn');
+
+        // Проверка поля URL
+        if (urlInput.value.trim() === '') {
+            urlSubmitBtn.disabled = true;
+        } else {
+            urlSubmitBtn.disabled = false;
+        }
+
+        // Проверка выбора файла
+        if (fileInput.files.length === 0) {
+            fileSubmitBtn.disabled = true;
+        } else {
+            fileSubmitBtn.disabled = false;
+        }
+    }
+
+    // Обработчики событий для проверки полей при вводе или выборе
+    document.getElementById('url').addEventListener('input', checkFields);
+    document.getElementById('file').addEventListener('change', checkFields);
+
+    // Инициализация проверки полей при загрузке страницы
+    checkFields();
+</script>
+{% endblock %}
