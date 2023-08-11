@@ -8,15 +8,42 @@
     <div class="col text-center">
         <h1>Лента новостей</h1>
     </div>
-    {% if news %}
-    <ul class="list-group">
-        {% for item in news|reverse %}
-        <li class="list-group-item">{{ item.action }}</li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p>Нет доступных новостей</p>
-    {% endif %}
+    <div id="news-container"></div>
 </div>
 {% include 'footer.html' %}
+<script>
+    function formatDateTime(dateTime) {
+        const options = { 
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        };
+        
+        return new Intl.DateTimeFormat('ru-RU', options).format(new Date(dateTime));
+    }
+
+    function updateNewsFeed() {
+        fetch('/get_news')
+            .then(response => response.json())
+            .then(news => {
+                document.getElementById('news-container').innerHTML = '';
+
+                // Обратный порядок ленты новостей
+                news.reverse();
+
+                news.forEach(item => {
+                    const newsItem = document.createElement('p');
+                    const formattedDateTime = formatDateTime(item.created_at);
+                    newsItem.textContent = `${formattedDateTime} - ${item.action}`;
+                    document.getElementById('news-container').appendChild(newsItem);
+                });
+            });
+    }
+
+    setInterval(updateNewsFeed, 1000);
+</script>
+
 {% endblock %}

@@ -220,3 +220,7 @@ fabric.properties
 .history/
 .idea
 000*
+
+# Temp folder and files
+temp
+links.csv

@@ -34,11 +34,11 @@
             <form action="/add_resource_via_form" method="POST" enctype="multipart/form-data" id="file-form">
                 <div class="form-group mt-3">
                     <div>
-                        <label class="mb-3" for="file">Загрузите zip-архив, содержащий csv-файл со ссылками на веб-ресурсы:</label>
+                        <label class="mb-3" for="file">Загрузите zip-архив, содержащий csv-файл со ссылками на веб-ресурсы (не более {{ max_size }}Mb):</label>
                     </div>
                     <input type="file" class="form-control-file" id="file" name="file" accept=".zip">
                 </div>
-                <button type="submit" class="btn btn-primary mt-3" id="file-submit-btn">Загрузить ZIP-архив</button>
+                <button type="submit" class="btn btn-primary mt-3" id="file-submit-btn" onclick="checkFileSize()">Загрузить ZIP-архив</button>
             </form>
         </div>
     </div>
@@ -48,6 +48,7 @@
 <!-- Подключение скриптов Bootstrap и пользовательского скрипта -->
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@10.15.5/dist/sweetalert2.all.min.js"></script>
 <script>
     // Функция для проверки полей и активации/деактивации кнопок
     function checkFields() {
@@ -77,5 +78,23 @@
 
     // Инициализация проверки полей при загрузке страницы
     checkFields();
+
+    // Функция для проверки размера файла
+    function checkFileSize() {
+        var maxSize = {{ max_size }};
+        var fileInput = document.getElementById('file');
+        var file = fileInput.files[0];
+
+        if (file.size > maxSize * (10 ** 6)) {
+            // alert('Размер файла превышает ' + maxSize + ' Мб');
+            Swal.fire({
+                icon: 'error',
+                title: 'Ошибка',
+                text: 'Размер файла превышает ' + maxSize + ' Мб',
+            });
+            fileInput.value = '';
+            event.preventDefault();
+        }
+    }
 </script>
 {% endblock %}

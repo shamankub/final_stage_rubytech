@@ -1,18 +1,23 @@
 import csv
 import logging
+import os
+import threading
 import zipfile
+from functools import wraps
 from io import BytesIO, TextIOWrapper
 from logging.handlers import RotatingFileHandler
 from typing import Union
 from urllib.parse import urlparse
 
-from flask import request
+from flask import redirect, request, session, url_for
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+from settings import LOGFILE_ABSOLUTE_PATH
 
 
 def create_logger():
@@ -26,14 +31,27 @@ def create_logger():
     logger = logging.getLogger("app")
     logger.setLevel(logging.INFO)
 
-    # Конфигурация логирования и ротации лог-файлов при достижении размера 1 Mb
-    file_handler = RotatingFileHandler("history.log", maxBytes=10**6, backupCount=5)
-    file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(formatter)
+    # Создание объекта мьютекса
+    log_lock = threading.Lock()
 
-    # Добавление обработчика файла к логгеру приложения
-    logger.addHandler(file_handler)
+    # Конфигурация логирования и ротации лог-файлов при достижении размера 1 Mb
+    with log_lock:
+        if LOGFILE_ABSOLUTE_PATH:
+            home_directory = os.getenv("HOME")
+            log_file = os.path.join(home_directory, "logs", "history.log")
+            file_handler = RotatingFileHandler(
+                log_file, maxBytes=10**6, backupCount=5
+            )
+        else:
+            file_handler = RotatingFileHandler(
+                "history.log", maxBytes=10**6, backupCount=5
+            )
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+
+        # Добавление обработчика файла к логгеру приложения
+        logger.addHandler(file_handler)
 
     return logger
 
@@ -84,7 +102,7 @@ def unzip_and_parse_csv() -> Union[bool, list]:
 def read_log_file():
     """Функция для чтения лог-файла и возврата его содержимого."""
     with open("history.log", "r") as file:
-        log_content = file.read()
+        log_content = file.read()  # .splitlines()
     return log_content
 
 
@@ -126,3 +144,13 @@ def generate_pdf():
     buffer.seek(0)
 
     return buffer
+
+
+def login_required(func):
+    """Декоратор для проверки авторизации."""
+    @wraps(func)
+    def decorated(*args, **kwargs):
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        return func(*args, **kwargs)
+    return decorated

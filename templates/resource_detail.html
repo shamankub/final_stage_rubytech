@@ -51,7 +51,11 @@
             </tr>
             <tr>
                 <th scope="row">Дата мониторинга</th>
-                <td>{{ resource.last_checked }}</td>
+                <td>{{ resource.last_checked.strftime("%d %b %Y %H:%M:%S") }}</td>
+            </tr>
+            <tr>
+                <th scope="row">Отслеживается</th>
+                <td>{{ resource.is_active }}</td>
             </tr>
         </tbody>
     </table>
@@ -90,8 +94,8 @@
         <h2>Лента новостей</h2>
         {% if actions %}
         <ul class="list-group">
-            {% for action in actions %}
-            <li class="list-group-item">{{ action }}</li>
+            {% for action in actions|reverse %}
+            <li class="list-group-item">{{ action[1].strftime("%d %b %Y %H:%M:%S") }} - {{ action[0] }}</li>
             {% endfor %}
         </ul>
         {% else %}

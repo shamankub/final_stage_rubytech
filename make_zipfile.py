@@ -32,7 +32,7 @@ def generate_link() -> str:
 with open(csv_to_zip, "w", newline="") as csvfile:
     writer = csv.writer(csvfile)
 
-    for i in range(100):
+    for i in range(500):
         link = generate_link()
         writer.writerow([link])
 
