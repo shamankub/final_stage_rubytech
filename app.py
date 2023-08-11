@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import locale
+import os
 import uuid
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -7,28 +9,32 @@ from math import ceil
 from urllib.parse import parse_qs, urlparse
 
 import aiohttp
+import more_itertools
 import requests
-from kombu import serialization
 from celery import Celery
-from flask import (
-    Flask,
-    jsonify,
-    make_response,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
+from dotenv import load_dotenv
+from flask import (Flask, jsonify, make_response, redirect, render_template,
+                   request, session, url_for)
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from kombu import serialization
 from PIL import Image
 
-from settings import LOG_FILE_LENGTH, MONITORING_PERIOD, TIMEOUT, UNAVAILABILITY_PERIOD
-from utils import generate_pdf, is_valid_url, logger, read_log_file, unzip_and_parse_csv
+from settings import (LOG_FILE_LENGTH, MAX_COUNT_URL_TOGETHER,
+                      MAX_ZIPFILE_SIZE, MONITORING_PERIOD, TIMEOUT,
+                      UNAVAILABILITY_PERIOD)
+from utils import (generate_pdf, is_valid_url, logger, login_required,
+                   read_log_file, unzip_and_parse_csv)
+
+load_dotenv(".env")
+
+# Устанавливаем русскую локаль для даты
+locale.setlocale(locale.LC_TIME, "ru_RU.utf8")
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://admin:admin@db:5432/mydatabase"
-#app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///resources.db"
+app.secret_key = os.getenv("SECRET_KEY")
+# app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://admin:admin@db:5432/mydatabase"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///resources.db"
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
@@ -42,9 +48,9 @@ app.config["result_backend"] = "rpc://"
 celery_app = Celery(app.name, broker=app.config["CELERY_BROKER_URL"])
 celery_app.conf.update(app.config)
 
-celery_app.conf.task_serializer = 'pickle'
-celery_app.conf.result_serializer = 'pickle'
-celery_app.conf.accept_content = ['pickle']
+celery_app.conf.task_serializer = "pickle"
+celery_app.conf.result_serializer = "pickle"
+celery_app.conf.accept_content = ["pickle"]
 
 # Настраиваем сериализацию для Celery
 serialization.register_pickle()
@@ -73,7 +79,7 @@ class WebResource(db.Model):
     path = db.Column(db.String(100))
     status_code = db.Column(db.Integer, default=200)
     is_available = db.Column(db.Boolean, default=True)
-    last_checked = db.Column(db.DateTime, default=datetime.utcnow)
+    last_checked = db.Column(db.DateTime, default=datetime.now)
     is_active = db.Column(db.Boolean, default=True)
     screenshot = db.Column(db.LargeBinary)
 
@@ -87,10 +93,22 @@ class NewsFeed(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     resource_id = db.Column(db.String(36))
     action = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     def __repr__(self):
         return f"<NewsFeed {self.id}>"
+
+
+class User(db.Model):
+    """Модель для хранения информации о пользователях."""
+
+    id = db.Column(
+        db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()), unique=True
+    )
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(128), nullable=False)
+    # token = db.Column(db.String(50), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
 
 
 def add_news_in_feed(action, resource_id=None):
@@ -98,6 +116,16 @@ def add_news_in_feed(action, resource_id=None):
     news_feed = NewsFeed(action=action, resource_id=resource_id)
     db.session.add(news_feed)
     db.session.commit()
+
+
+def is_authenticated(username, password=None, token=None):
+    user = User.query.filter_by(username=username).first()
+    if user:
+        if password and user.password == password:
+            return True
+        # if token and user.token == token:
+        #     return True
+    return False
 
 
 # Реализация API-интерфейса
@@ -114,24 +142,10 @@ async def process_url(url):
                 domain = parsed_url.netloc
                 domain_zone = domain.split(".")[-1]
                 path = parsed_url.path
-                is_available = True if status_code < 400 else False
+                is_available = True if status_code == 200 else False
 
                 # Преобразование параметров ссылки в словарь
                 params = parse_qs(parsed_url.query)
-
-                # Сохранение данных в базе данных
-                resource = WebResource(
-                    url=url,
-                    protocol=protocol,
-                    domain=domain,
-                    domain_zone=domain_zone,
-                    path=path,
-                    params=params,
-                    status_code=status_code,
-                    is_available=is_available,
-                )
-                db.session.add(resource)
-                db.session.commit()
 
                 # Формирование JSON-ответа
                 response_data = {
@@ -143,11 +157,45 @@ async def process_url(url):
                     "params": params,
                     "status": status_code,
                 }
-                action = f"URL сохранён в базу данных: {url}"
-                add_news_in_feed(action)
-                logger.info(action)
 
-                return response_data
+                # Проверяем наличие URL в базе данных
+                existing_resource = WebResource.query.filter_by(url=url).first()
+
+                if existing_resource:
+                    if not existing_resource.is_active:
+                        # Если ресурс уже не отслеживается, то добавляем его в наблюдение
+                        existing_resource.is_active = True
+                        existing_resource.last_checked = datetime.now()
+                        db.session.commit()
+                        action = f"URL изменён. {url} добавлен в наблюдение"
+                        add_news_in_feed(action, existing_resource.uuid)
+                        logger.info(action)
+                        return response_data
+                    else:
+                        action = f"URL не добавлен. {url} уже существует в базе данных"
+                        add_news_in_feed(action, existing_resource.uuid)
+                        logger.info(action)
+                        return {"error": f"'{url}' - is exist"}
+                else:
+                    # Создаем новый ресурс в базе данных
+                    resource = WebResource(
+                        url=url,
+                        protocol=protocol,
+                        domain=domain,
+                        domain_zone=domain_zone,
+                        path=path,
+                        params=params,
+                        status_code=status_code,
+                        is_available=is_available,
+                    )
+                    db.session.add(resource)
+                    db.session.commit()
+
+                    action = f"URL сохранён в базу данных: {url}"
+                    add_news_in_feed(action)
+                    logger.info(action)
+
+                    return response_data
 
     except aiohttp.ClientError:
         if not is_valid_url(url):
@@ -195,26 +243,28 @@ async def process_resource():
     db_saved_urls = 0
     errors = 0
 
-    # Асинхронная обработка ссылок
-    results = await asyncio.gather(*[process_url(url) for url in url_list])
+    # Деление списка url_list на части, если его длина превышает максимальное количество одновременно обрабатываемых веб-ресурсов
+    url_list_chunks = list(more_itertools.chunked(url_list, MAX_COUNT_URL_TOGETHER))
 
-    for result in results:
-        if result.get("error"):
-            errors += 1
-        else:
-            db_saved_urls += 1
+    for chunk in url_list_chunks:
+        # Асинхронная обработка ссылок
+        results = await asyncio.gather(*[process_url(url) for url in chunk])
 
-        # Логирование результата опроса статус кода сайта
-        if result.get("url"):
-            action = f"Опрос статус кода URL: {result.get('url')}, Status Code: {result.get('status')}"
-            add_news_in_feed(action)
-            logger.info(action)
+        for result in results:
+            if result.get("error"):
+                errors += 1
+            else:
+                db_saved_urls += 1
 
-    processed_urls = len(results)
+            # Логирование результата опроса статус кода сайта
+            if result.get("url"):
+                action = f"Опрос статус кода URL: {result.get('url')}, Status Code: {result.get('status')}"
+                add_news_in_feed(action)
+                logger.info(action)
 
     status = {
         "total_urls": total_urls,
-        "processed_urls": processed_urls,
+        "processed_urls": db_saved_urls + errors,
         "errors": errors,
         "db_saved_urls": db_saved_urls,
     }
@@ -237,10 +287,12 @@ async def process_resource():
         return jsonify(response_data)
 
 
+@app.route("/resource/<string:resource_id>/api_screenshot", methods=["POST"])
 @app.route("/resource/<string:resource_id>/upload_screenshot", methods=["POST"])
 def upload_screenshot(resource_id):
     """Функция для обработки POST-запроса со скриншотом и UUID веб-ресурса."""
     screenshot_data = request.files.get("screenshot")
+    path = request.path
 
     # Проверка наличия ресурса в базе данных
     resource = WebResource.query.get(resource_id)
@@ -279,12 +331,18 @@ def upload_screenshot(resource_id):
         action = f"Скриншот сохранен для ресурса с ID: {resource_id}"
         add_news_in_feed(action, resource_id)
         logger.info(action)
-        return redirect(f"/resources/{resource_id}")
+        if path == f"/resource/{resource_id}/upload_screenshot":
+            return redirect(f"/resources/{resource_id}")
+        elif path == f"/resource/{resource_id}/api_screenshot":
+            return {"success": "Screenshot successfully uploaded"}
     except Exception as e:
         action = f"Ошибка обработки скриншота: {e}"
         add_news_in_feed(action, resource_id)
         logger.error(action)
-        return redirect(f"/resources/{resource_id}")
+        if path == f"/resource/{resource_id}/upload_screenshot":
+            return redirect(f"/resources/{resource_id}")
+        elif path == f"/resource/{resource_id}/api_screenshot":
+            return {"error": "Screenshot processing error"}
 
 
 @app.route("/resources", methods=["GET"])
@@ -370,9 +428,10 @@ def get_sliced_log():
 
 # Реализация веб-интерфейса
 @app.route("/add_resource", methods=["GET"])
+@login_required
 def add_resource():
     """Функция для добавления веб-ресурса."""
-    return render_template("add_resource.html")
+    return render_template("add_resource.html", max_size=MAX_ZIPFILE_SIZE)
 
 
 @app.route("/", methods=["GET"])
@@ -415,6 +474,7 @@ def render_resources():
 
 
 @app.route("/log")
+@login_required
 def log_page():
     """Функция для отображения страницы, выводящей строки из лог-файла."""
     log_content = read_log_file()
@@ -422,6 +482,7 @@ def log_page():
 
 
 @app.route("/download_log")
+@login_required
 def download_log():
     """Функция для скачивания лог-файла в формате PDF."""
     pdf_buffer = generate_pdf()
@@ -433,7 +494,19 @@ def download_log():
     return response
 
 
+@app.route("/get_news")
+def get_news():
+    """Функция для возврата списка новостей в формате JSON."""
+    news = NewsFeed.query.all()
+    news_list = [
+        {"created_at": str(news_item.created_at), "action": news_item.action}
+        for news_item in news
+    ]
+    return jsonify(news_list)
+
+
 @app.route("/news_feed")
+@login_required
 def news_feed():
     """Функция для вывода всех событий на страницу Лента новостей."""
     news = NewsFeed.query.all()
@@ -441,6 +514,7 @@ def news_feed():
 
 
 @app.route("/resources/<string:resource_id>", methods=["GET"])
+@login_required
 def render_resource(resource_id):
     """Функция для вывода всех данных веб-ресурса."""
     resource = WebResource.query.get(resource_id)
@@ -455,7 +529,7 @@ def render_resource(resource_id):
 
     # Получение данных из модели NewsFeed
     news_feed_data = NewsFeed.query.filter_by(resource_id=resource_id).all()
-    actions = [news_feed.action for news_feed in news_feed_data]
+    actions = [(news_feed.action, news_feed.created_at) for news_feed in news_feed_data]
 
     # Получение изображения (если есть) для веб-ресурса
     image_data = None
@@ -471,6 +545,7 @@ def render_resource(resource_id):
 
 
 @app.route("/resources/<string:resource_id>", methods=["POST"])
+@login_required
 def delete_resource(resource_id):
     """Функция для удаления веб-ресурса."""
     resource = WebResource.query.get(resource_id)
@@ -490,7 +565,61 @@ def delete_resource(resource_id):
     return redirect(url_for("render_resources"))
 
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Функция для регистрации нового пользователя."""
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        email = request.form['email']
+
+        if User.query.filter_by(username=username).first():
+            error = 'Пользователь с таким именем уже существует.'
+        elif User.query.filter_by(email=email).first():
+            error = 'Пользователь с таким e-mail уже существует'
+        else:
+            new_user = User(username=username, password=password, email=email)
+            db.session.add(new_user)
+            db.session.commit()
+            if is_authenticated(username, password=password):
+                session["authenticated"] = True
+                session["username"] = username
+                logger.info(f"Пользователь '{username}' зарегистрирован")
+                return redirect(url_for("render_resources"))
+
+        return render_template('register.html', error=error)
+
+    return render_template('register.html')
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Функция для аутентификации."""
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        if is_authenticated(username, password=password):
+            session["authenticated"] = True
+            session["username"] = username
+            logger.info(f"Пользователь '{username}' вошел в систему")
+            return redirect(url_for("render_resources"))
+        else:
+            logger.warning(f"Неудачная попытка входа для пользователя '{username}'")
+            return render_template("login.html", error="Неправильное имя пользователя или пароль")
+    return render_template("login.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    """Функция для завершения сессии."""
+    logger.info(f"Пользователь '{session.get('username')}' вышел из системы.")
+    session.clear()
+    return redirect(url_for("render_resources"))
+
+
 @app.route("/about")
+@login_required
 def about():
     """Функция для рендеринга страницы О проекте."""
     return render_template("about.html")
@@ -507,15 +636,21 @@ def check_single_resource(resource):
             last_checked = datetime.now()
             is_available = status_code == 200
             if resource.is_available is False and is_available:
-                logger.info(f"Веб-ресурс стал недоступен: {resource.url}")
+                action = f"Веб-ресурс снова доступен: {resource.url}"
+                add_news_in_feed(action, resource.uuid)
+                logger.info(action)
             elif resource.is_available and is_available is False:
-                logger.info(f"Веб-ресурс снова доступен: {resource.url}")
+                action = f"Веб-ресурс стал недоступен: {resource.url}"
+                add_news_in_feed(action, resource.uuid)
+                logger.info(action)
             if is_available:
                 resource.last_checked = last_checked
             else:
                 if last_checked - resource.last_checked > period_of_unavailability:
                     resource.is_active = False
-                    logger.info(f"Прекращение мониторинга веб-ресурса: {resource.url}")
+                    action = f"Прекращение мониторинга веб-ресурса: {resource.url}"
+                    add_news_in_feed(action, resource.uuid)
+                    logger.info(action)
             resource.is_available = is_available
             db.session.add(resource)
             db.session.commit()
@@ -523,6 +658,9 @@ def check_single_resource(resource):
             resource.is_available = False
             if datetime.now() - resource.last_checked > period_of_unavailability:
                 resource.is_active = False
+                action = f"Прекращение мониторинга веб-ресурса: {resource.url}"
+                add_news_in_feed(action, resource.uuid)
+                logger.info(action)
             db.session.add(resource)
             db.session.commit()
 
@@ -546,4 +684,4 @@ def get_active_resources():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=True)

@@ -38,14 +38,14 @@
                 </li>
             </ul>
 
-            <form class="col-12 col-lg-auto mb-3 mb-lg-0 me-lg-3" role="search">
-                <input type="search" class="form-control form-control-dark text-bg-dark" placeholder="Найти..."
-                    aria-label="Search">
-            </form>
-
-            <div class="text-end">
-                <button type="button" class="btn btn-outline-light me-2">Войти</button>
-                <button type="button" class="btn btn-warning">Регистрация</button>
+            <div class="text-end d-flex">
+                {% if session.get('authenticated') %}
+                <a href="#" class="text-white me-2 mt-2 nav-link px-2">{{ session.get('username') }}</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-warning me-2">Выход</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="btn btn-outline-light me-2">Вход</a>
+                <a href="{{ url_for('register') }}" class="btn btn-warning me-2">Регистрация</a>
+                {% endif %}
             </div>
         </div>
     </div>
